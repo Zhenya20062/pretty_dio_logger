@@ -53,6 +53,9 @@ class PrettyDioLogger extends Interceptor {
   /// Enable logPrint
   final bool enabled;
 
+  /// Params in Dio's "Response.data" field that need to be replaced to something else, e.g. encoded or just not printed (for log security)
+  final List<ParamsReplacement>? replaceParams;
+
   /// Default constructor
   PrettyDioLogger({
     this.request = true,
@@ -66,6 +69,7 @@ class PrettyDioLogger extends Interceptor {
     this.logPrint = print,
     this.filter,
     this.enabled = true,
+    this.replaceParams,
   });
 
   @override
@@ -104,18 +108,33 @@ class PrettyDioLogger extends Interceptor {
     if (requestBody && options.method != 'GET') {
       final dynamic data = options.data;
       if (data != null) {
-        if (data is Map) _printMapAsTable(options.data as Map?, header: 'Body');
-        if (data is FormData) {
+        dynamic _data = _excludeParams(data);
+        if (_data is Map) _printMapAsTable(_data, header: 'Body');
+        if (_data is FormData) {
           final formDataMap = <String, dynamic>{}
-            ..addEntries(data.fields)
-            ..addEntries(data.files);
-          _printMapAsTable(formDataMap, header: 'Form data | ${data.boundary}');
+            ..addEntries(_data.fields)
+            ..addEntries(_data.files);
+          _printMapAsTable(formDataMap, header: 'Form data | ${_data.boundary}');
         } else {
-          _printBlock(data.toString());
+          _printBlock(_data.toString());
         }
       }
     }
     handler.next(options);
+  }
+
+  Map<dynamic, dynamic> _excludeParams(dynamic data) {
+    if (replaceParams == null || data is !Map) return data;
+
+    Map _data = Map.from(data);
+
+    for (ParamsReplacement e in replaceParams!) {
+      for (String param in e.params) {
+        if (_data.containsKey(param)) _data[param] = e.onReplace(param, _data[param]);
+      }
+    }
+
+    return _data;
   }
 
   @override
@@ -390,4 +409,18 @@ class FilterArgs {
 
   /// Default constructor
   const FilterArgs(this.isResponse, this.data);
+}
+
+String Function(String, String?) _replaceToEmptyValueFunction = (String key, String? value) => "";
+
+/// Params to be replaced
+class ParamsReplacement {
+  /// fields to replace
+  final List<String> params;
+  /// callback function to change value of [params] field to another value.
+  final String Function(String, String?) onReplace;
+
+  /// Default constructor. If the callback is not provided, then [params] value will be replaced to " " (empty string)
+  ParamsReplacement({required this.params, String Function(String, String?)? onReplace}):
+        onReplace = onReplace ?? _replaceToEmptyValueFunction;
 }
