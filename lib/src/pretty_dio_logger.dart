@@ -123,7 +123,7 @@ class PrettyDioLogger extends Interceptor {
     handler.next(options);
   }
 
-  Map<dynamic, dynamic> _excludeParams(dynamic data) {
+  dynamic _excludeParams(dynamic data) {
     if (replaceParams == null || data is !Map) return data;
 
     Map _data = Map.from(data);
